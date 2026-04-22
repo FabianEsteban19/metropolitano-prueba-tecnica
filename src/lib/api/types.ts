@@ -9,7 +9,6 @@ export type BusStatus = "en_ruta" | "en_estacion" | "fuera_servicio" | "retraso"
 export interface Station {
   id: string;
   name: string;
-  /** Orden a lo largo del corredor (0 = Naranjal, último = Matellini) */
   order: number;
   district: string;
   lat: number;
@@ -18,38 +17,92 @@ export interface Station {
 
 export interface Route {
   id: string;
-  code: string;             // Ej: "A", "B", "C", "Regular"
-  name: string;             // Ej: "Expreso 1"
+  code: string;
+  name: string;
   service: ServiceType;
-  color: string;            // hsl o hex usado en mapas
+  color: string;
   description: string;
-  stationIds: string[];     // ids de Station en orden
+  stationIds: string[];
   operatingHours: {
     weekday: { start: string; end: string };
     saturday: { start: string; end: string };
     sunday: { start: string; end: string };
   };
-  frequencyMinutes: number; // frecuencia promedio
+  frequencyMinutes: number;
 }
 
+// ============================================================
+// Entidades del MVP — alineadas al enunciado
+// ============================================================
+
+/**
+ * Bus — entidad mínima del enunciado.
+ * Campos extra (routeId, plate, status, etc.) son metadatos del MVP avanzado.
+ */
 export interface Bus {
   id: string;
-  plate: string;            // Placa
+  codigo: string;          // "código" del enunciado (ej. METRO-001)
+  capacidad: number;       // capacidad máxima
+  // ---- extras MVP ----
   routeId: string;
-  capacity: number;         // máximo aforo
-  currentOccupancy: number; // ocupación actual
+  plate: string;
   status: BusStatus;
-  /** Estación actual o más cercana */
+  /** Estado derivado del último reporte */
+  ultimoReporte?: Reporte | null;
+  createdAt: string;
+}
+
+/**
+ * Reporte — entidad mínima del enunciado.
+ * id, bus_id, latitud, longitud, cantidad_pasajeros, timestamp.
+ */
+export interface Reporte {
+  id: string;
+  busId: string;
+  latitud: number;
+  longitud: number;
+  cantidadPasajeros: number;
+  timestamp: string;
+  // ---- extras útiles ----
+  /** Estación más cercana al momento del reporte */
+  estacionId?: string | null;
+  /** % calculado contra la capacidad (0..100) */
+  ocupacionPct?: number;
+  velocidadKmh?: number;
+}
+
+export interface ApiError {
+  code: string;
+  message: string;
+  field?: string;
+}
+
+export interface ApiResponse<T> {
+  ok: boolean;
+  data?: T;
+  error?: ApiError;
+}
+
+// Live update legacy
+export interface LiveUpdate {
+  buses: BusLiveView[];
+  timestamp: string;
+}
+
+/** Vista enriquecida del bus para la UI pública/live */
+export interface BusLiveView {
+  id: string;
+  plate: string;
+  routeId: string;
+  capacity: number;
+  currentOccupancy: number;
+  status: BusStatus;
   currentStationId: string;
-  /** Próxima estación */
   nextStationId: string | null;
-  /** Progreso entre estación actual y siguiente (0..1) */
   progress: number;
-  /** Velocidad km/h */
   speed: number;
-  /** ETA a próxima estación en minutos */
   etaMinutes: number;
-  lastUpdate: string;       // ISO date
+  lastUpdate: string;
   lat: number;
   lng: number;
   direction: "norte" | "sur";
@@ -58,10 +111,5 @@ export interface Bus {
 export interface ScheduleEntry {
   routeId: string;
   stationId: string;
-  arrivals: string[]; // HH:mm
-}
-
-export interface LiveUpdate {
-  buses: Bus[];
-  timestamp: string;
+  arrivals: string[];
 }
