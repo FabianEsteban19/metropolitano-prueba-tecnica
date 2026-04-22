@@ -299,7 +299,7 @@ export async function listarReportes(limit = 50): Promise<ApiResponse<Reporte[]>
 // Catálogos: rutas y estaciones
 // ============================================================
 export async function getRoutes(): Promise<Route[]> {
-  if (USE_MOCK) return STATIONS && ROUTES;
+  if (USE_MOCK) return ROUTES;
   const r = await http<Route[]>("/routes");
   return r.data ?? [];
 }
