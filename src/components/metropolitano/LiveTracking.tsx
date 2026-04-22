@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Wifi } from "lucide-react";
 import { getStations, subscribeLiveBuses, getRoutes } from "@/lib/api/metropolitanoApi";
-import type { Bus, Route, Station } from "@/lib/api/types";
+import type { BusLiveView, Route, Station } from "@/lib/api/types";
 import { BusCard } from "./BusCard";
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
 }
 
 export const LiveTracking = ({ routeId }: Props) => {
-  const [buses, setBuses] = useState<Bus[]>([]);
+  const [buses, setBuses] = useState<BusLiveView[]>([]);
   const [stations, setStations] = useState<Station[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [lastUpdate, setLastUpdate] = useState<string>("");
