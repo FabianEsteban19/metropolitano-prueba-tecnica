@@ -1,12 +1,12 @@
-import type { Bus, Station } from "@/lib/api/types";
+import type { BusLiveView, Station } from "@/lib/api/types";
 import { Users, Gauge, MapPin, AlertCircle, CheckCircle2, ArrowRight } from "lucide-react";
 
 interface Props {
-  bus: Bus;
+  bus: BusLiveView;
   stations: Station[];
 }
 
-const statusMap: Record<Bus["status"], { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
+const statusMap: Record<BusLiveView["status"], { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   en_ruta: { label: "En ruta", cls: "bg-success/15 text-success border-success/30", Icon: ArrowRight },
   en_estacion: { label: "En estación", cls: "bg-primary/15 text-primary border-primary/30", Icon: CheckCircle2 },
   retraso: { label: "Con retraso", cls: "bg-warning/15 text-warning border-warning/40", Icon: AlertCircle },
