@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Bus, Reporte, Station } from "@/lib/api/types";
+import type { Bus, Estacion, Reporte } from "@/lib/api/types";
 
-// Fix de iconos por defecto Leaflet en bundlers
+// Fix iconos por defecto Leaflet
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -13,11 +13,11 @@ L.Icon.Default.mergeOptions({
 
 interface Props {
   buses: Bus[];
-  stations: Station[];
-  reportesByBus: Record<string, Reporte[]>;
+  estaciones: Estacion[];
+  reportesByBus: Record<number, Reporte[]>;
   height?: string;
-  selectedBusId?: string | null;
-  onSelectBus?: (id: string) => void;
+  selectedBusId?: number | null;
+  onSelectBus?: (id: number) => void;
 }
 
 function busColor(occPct: number) {
@@ -36,8 +36,7 @@ function busIcon(codigo: string, occPct: number) {
       <div style="position:relative;">
         <div style="
           width:34px;height:34px;border-radius:50%;
-          background:${color};
-          border:3px solid white;
+          background:${color};border:3px solid white;
           box-shadow:0 4px 10px rgba(0,0,0,0.3);
           display:flex;align-items:center;justify-content:center;
           color:white;font-weight:700;font-size:10px;font-family:Inter,sans-serif;">
@@ -47,8 +46,7 @@ function busIcon(codigo: string, occPct: number) {
           position:absolute;inset:-6px;border-radius:50%;
           border:2px solid ${color};opacity:0.4;
           animation:metroPulse 2s infinite;"></div>
-      </div>
-    `,
+      </div>`,
   });
 }
 
@@ -59,16 +57,13 @@ const stationIcon = L.divIcon({
   html: `<div style="width:12px;height:12px;border-radius:50%;background:hsl(354 78% 46%);border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>`,
 });
 
-export const FleetMap = ({ buses, stations, reportesByBus, height = "560px", selectedBusId, onSelectBus }: Props) => {
+export const FleetMap = ({ buses, estaciones, reportesByBus, height = "560px", selectedBusId, onSelectBus }: Props) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<{ buses: L.LayerGroup; stations: L.LayerGroup } | null>(null);
 
-  // init map
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) return;
-
-    // inyectar keyframes una sola vez
     if (!document.getElementById("metro-pulse-style")) {
       const style = document.createElement("style");
       style.id = "metro-pulse-style";
@@ -78,51 +73,31 @@ export const FleetMap = ({ buses, stations, reportesByBus, height = "560px", sel
       }`;
       document.head.appendChild(style);
     }
-
-    const map = L.map(mapRef.current, {
-      center: [-12.07, -77.04],
-      zoom: 12,
-      zoomControl: true,
-    });
+    const map = L.map(mapRef.current, { center: [-12.07, -77.04], zoom: 12, zoomControl: true });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '© OpenStreetMap',
-      maxZoom: 19,
+      attribution: "© OpenStreetMap", maxZoom: 19,
     }).addTo(map);
-
-    layersRef.current = {
-      buses: L.layerGroup().addTo(map),
-      stations: L.layerGroup().addTo(map),
-    };
+    layersRef.current = { buses: L.layerGroup().addTo(map), stations: L.layerGroup().addTo(map) };
     leafletMapRef.current = map;
-
-    return () => {
-      map.remove();
-      leafletMapRef.current = null;
-      layersRef.current = null;
-    };
+    return () => { map.remove(); leafletMapRef.current = null; layersRef.current = null; };
   }, []);
 
-  // estaciones
   useEffect(() => {
     if (!layersRef.current) return;
     layersRef.current.stations.clearLayers();
-    stations.forEach((st) => {
-      L.marker([st.lat, st.lng], { icon: stationIcon })
-        .bindPopup(`<strong>${st.name}</strong><br/><span style="opacity:.7">${st.district}</span>`)
+    estaciones.forEach((st) => {
+      L.marker([st.latitud, st.longitud], { icon: stationIcon })
+        .bindPopup(`<strong>${st.nombre}</strong><br/><span style="opacity:.7">${st.distrito}</span>`)
         .addTo(layersRef.current!.stations);
     });
-  }, [stations]);
+  }, [estaciones]);
 
-  // buses
   const positions = useMemo(() => {
     return buses.map((b) => {
       const last = reportesByBus[b.id]?.[0];
       return {
-        bus: b,
-        lat: last?.latitud,
-        lng: last?.longitud,
-        occ: last?.ocupacionPct ?? 0,
-        last,
+        bus: b, lat: last?.latitud, lng: last?.longitud,
+        occ: last?.ocupacion_pct ?? 0, last,
       };
     }).filter((p) => p.lat !== undefined && p.lng !== undefined);
   }, [buses, reportesByBus]);
@@ -135,20 +110,18 @@ export const FleetMap = ({ buses, stations, reportesByBus, height = "560px", sel
       marker.bindPopup(`
         <div style="font-family:Inter,sans-serif;min-width:180px">
           <div style="font-weight:700;font-size:14px">${bus.codigo}</div>
-          <div style="font-size:11px;opacity:.7;margin-bottom:6px">Placa ${bus.plate}</div>
-          <div style="font-size:12px">Pasajeros: <b>${last?.cantidadPasajeros ?? 0}/${bus.capacidad}</b></div>
+          <div style="font-size:11px;opacity:.7;margin-bottom:6px">Placa ${bus.placa ?? "—"}</div>
+          <div style="font-size:12px">Pasajeros: <b>${last?.cantidad_pasajeros ?? 0}/${bus.capacidad}</b></div>
           <div style="font-size:12px">Ocupación: <b>${occ}%</b></div>
-          <div style="font-size:12px">Velocidad: <b>${last?.velocidadKmh ?? 0} km/h</b></div>
+          <div style="font-size:12px">Velocidad: <b>${last?.velocidad_kmh ?? 0} km/h</b></div>
           <div style="font-size:11px;opacity:.6;margin-top:4px">${last ? new Date(last.timestamp).toLocaleTimeString("es-PE") : ""}</div>
-        </div>
-      `);
+        </div>`);
       if (onSelectBus) marker.on("click", () => onSelectBus(bus.id));
       if (bus.id === selectedBusId) marker.openPopup();
       marker.addTo(layersRef.current!.buses);
     });
   }, [positions, selectedBusId, onSelectBus]);
 
-  // centrar al bus seleccionado
   useEffect(() => {
     if (!leafletMapRef.current || !selectedBusId) return;
     const p = positions.find((p) => p.bus.id === selectedBusId);
