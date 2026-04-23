@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Wifi } from "lucide-react";
-import { getStations, subscribeLiveBuses, getRoutes } from "@/lib/api/metropolitanoApi";
-import type { BusLiveView, Route, Station } from "@/lib/api/types";
+import { listarEstaciones, subscribeLiveBuses, listarRutas } from "@/lib/api/metropolitanoApi";
+import type { BusEstado, BusLiveView, Estacion, Ruta } from "@/lib/api/types";
 import { BusCard } from "./BusCard";
 
 interface Props {
-  routeId: string | null;
+  routeId: number | null;
 }
 
 export const LiveTracking = ({ routeId }: Props) => {
   const [buses, setBuses] = useState<BusLiveView[]>([]);
-  const [stations, setStations] = useState<Station[]>([]);
-  const [routes, setRoutes] = useState<Route[]>([]);
+  const [estaciones, setEstaciones] = useState<Estacion[]>([]);
+  const [rutas, setRutas] = useState<Ruta[]>([]);
   const [lastUpdate, setLastUpdate] = useState<string>("");
-  const [filter, setFilter] = useState<"todos" | "en_ruta" | "en_estacion" | "retraso">("todos");
+  const [filter, setFilter] = useState<"todos" | BusEstado>("todos");
 
   useEffect(() => {
-    Promise.all([getStations(), getRoutes()]).then(([s, r]) => {
-      setStations(s);
-      setRoutes(r);
+    Promise.all([listarEstaciones(), listarRutas()]).then(([s, r]) => {
+      setEstaciones(s);
+      setRutas(r);
     });
   }, []);
 
@@ -30,25 +30,24 @@ export const LiveTracking = ({ routeId }: Props) => {
     return unsub;
   }, [routeId]);
 
-  const route = routes.find((r) => r.id === routeId);
-  const routeStations = useMemo(
+  const ruta = rutas.find((r) => r.id === routeId);
+  const rutaEstaciones = useMemo(
     () =>
-      route
-        ? stations.filter((s) => route.stationIds.includes(s.id)).sort((a, b) => a.order - b.order)
-        : stations,
-    [route, stations],
+      ruta?.estacion_ids
+        ? estaciones.filter((s) => ruta.estacion_ids!.includes(s.id)).sort((a, b) => a.orden - b.orden)
+        : estaciones,
+    [ruta, estaciones],
   );
 
-  const filtered = filter === "todos" ? buses : buses.filter((b) => b.status === filter);
+  const filtered = filter === "todos" ? buses : buses.filter((b) => b.estado === filter);
 
-  // Estadísticas
   const stats = {
     total: buses.length,
-    enRuta: buses.filter((b) => b.status === "en_ruta").length,
-    enEstacion: buses.filter((b) => b.status === "en_estacion").length,
-    retraso: buses.filter((b) => b.status === "retraso").length,
+    enRuta: buses.filter((b) => b.estado === "en_ruta").length,
+    enEstacion: buses.filter((b) => b.estado === "en_estacion").length,
+    retraso: buses.filter((b) => b.estado === "retraso").length,
     aforoMedio: buses.length
-      ? Math.round((buses.reduce((a, b) => a + b.currentOccupancy / b.capacity, 0) / buses.length) * 100)
+      ? Math.round((buses.reduce((a, b) => a + b.ocupacion_actual / b.capacidad, 0) / buses.length) * 100)
       : 0,
   };
 
@@ -61,8 +60,8 @@ export const LiveTracking = ({ routeId }: Props) => {
             Buses en este momento
           </h2>
           <p className="text-muted-foreground mt-2 max-w-xl">
-            {route
-              ? <>Mostrando flota del servicio <strong className="text-foreground">{route.name}</strong>.</>
+            {ruta
+              ? <>Mostrando flota del servicio <strong className="text-foreground">{ruta.nombre}</strong>.</>
               : "Mostrando la flota completa del corredor."}
           </p>
         </div>
@@ -80,7 +79,6 @@ export const LiveTracking = ({ routeId }: Props) => {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
         {[
           { label: "Total buses", value: stats.total, color: "text-foreground" },
@@ -96,7 +94,6 @@ export const LiveTracking = ({ routeId }: Props) => {
         ))}
       </div>
 
-      {/* Filtros */}
       <div className="flex flex-wrap gap-2 mb-6">
         {(["todos", "en_ruta", "en_estacion", "retraso"] as const).map((f) => (
           <button
@@ -113,7 +110,6 @@ export const LiveTracking = ({ routeId }: Props) => {
         ))}
       </div>
 
-      {/* Lista de buses */}
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
           <Activity className="w-8 h-8 mx-auto mb-3 opacity-50" />
@@ -122,13 +118,12 @@ export const LiveTracking = ({ routeId }: Props) => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {filtered.map((bus) => (
-            <BusCard key={bus.id} bus={bus} stations={routeStations.length ? routeStations : stations} />
+            <BusCard key={bus.id} bus={bus} estaciones={rutaEstaciones.length ? rutaEstaciones : estaciones} />
           ))}
         </div>
       )}
 
-      {/* Mapa lineal de la ruta */}
-      {route && (
+      {ruta && (
         <div className="mt-12 rounded-2xl border border-border bg-card p-6 shadow-card">
           <h3 className="font-display font-bold text-xl mb-1">Estaciones del recorrido</h3>
           <p className="text-sm text-muted-foreground mb-6">
@@ -136,9 +131,9 @@ export const LiveTracking = ({ routeId }: Props) => {
           </p>
           <div className="relative">
             <div className="absolute left-0 right-0 top-1/2 h-1 gradient-route rounded-full -translate-y-1/2" />
-            <ol className="relative grid gap-y-6" style={{ gridTemplateColumns: `repeat(${routeStations.length}, minmax(0, 1fr))` }}>
-              {routeStations.map((st) => {
-                const here = buses.filter((b) => b.currentStationId === st.id).length;
+            <ol className="relative grid gap-y-6" style={{ gridTemplateColumns: `repeat(${rutaEstaciones.length}, minmax(0, 1fr))` }}>
+              {rutaEstaciones.map((st) => {
+                const here = buses.filter((b) => b.estacion_actual_id === st.id).length;
                 return (
                   <li key={st.id} className="flex flex-col items-center text-center relative">
                     <div className={`w-4 h-4 rounded-full border-2 border-background z-10 ${here ? "bg-primary shadow-glow" : "bg-muted-foreground/40"}`} />
@@ -147,8 +142,8 @@ export const LiveTracking = ({ routeId }: Props) => {
                         {here}
                       </span>
                     )}
-                    <span className="text-[10px] mt-2 max-w-[60px] truncate text-muted-foreground" title={st.name}>
-                      {st.name}
+                    <span className="text-[10px] mt-2 max-w-[60px] truncate text-muted-foreground" title={st.nombre}>
+                      {st.nombre}
                     </span>
                   </li>
                 );
