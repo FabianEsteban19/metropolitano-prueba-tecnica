@@ -1,44 +1,44 @@
 import { useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
-import { getRoutes, getSchedule, getStations } from "@/lib/api/metropolitanoApi";
-import type { Route, ScheduleEntry, Station } from "@/lib/api/types";
+import { listarRutas, obtenerHorario, listarEstaciones } from "@/lib/api/metropolitanoApi";
+import type { Estacion, Ruta, ScheduleEntry } from "@/lib/api/types";
 
 interface Props {
-  routeId: string | null;
+  routeId: number | null;
 }
 
 export const ScheduleSection = ({ routeId }: Props) => {
-  const [routes, setRoutes] = useState<Route[]>([]);
-  const [stations, setStations] = useState<Station[]>([]);
-  const [stationId, setStationId] = useState<string>("");
+  const [rutas, setRutas] = useState<Ruta[]>([]);
+  const [estaciones, setEstaciones] = useState<Estacion[]>([]);
+  const [stationId, setStationId] = useState<number | null>(null);
   const [schedule, setSchedule] = useState<ScheduleEntry | null>(null);
 
   useEffect(() => {
-    Promise.all([getRoutes(), getStations()]).then(([r, s]) => {
-      setRoutes(r);
-      setStations(s);
+    Promise.all([listarRutas(), listarEstaciones()]).then(([r, s]) => {
+      setRutas(r);
+      setEstaciones(s);
     });
   }, []);
 
-  const route = useMemo(() => routes.find((r) => r.id === routeId), [routes, routeId]);
-  const routeStations = useMemo(
-    () => (route ? stations.filter((s) => route.stationIds.includes(s.id)).sort((a, b) => a.order - b.order) : []),
-    [route, stations],
+  const ruta = useMemo(() => rutas.find((r) => r.id === routeId), [rutas, routeId]);
+  const rutaEstaciones = useMemo(
+    () => (ruta?.estacion_ids ? estaciones.filter((s) => ruta.estacion_ids!.includes(s.id)).sort((a, b) => a.orden - b.orden) : []),
+    [ruta, estaciones],
   );
 
   useEffect(() => {
-    if (routeStations.length && !routeStations.find((s) => s.id === stationId)) {
-      setStationId(routeStations[0].id);
+    if (rutaEstaciones.length && !rutaEstaciones.find((s) => s.id === stationId)) {
+      setStationId(rutaEstaciones[0].id);
     }
-  }, [routeStations, stationId]);
+  }, [rutaEstaciones, stationId]);
 
   useEffect(() => {
     if (routeId && stationId) {
-      getSchedule(routeId, stationId).then(setSchedule);
+      obtenerHorario(routeId, stationId).then(setSchedule);
     }
   }, [routeId, stationId]);
 
-  if (!route) {
+  if (!ruta) {
     return (
       <section id="horarios" className="container py-20">
         <p className="text-muted-foreground">Selecciona una ruta para ver sus horarios.</p>
@@ -46,14 +46,15 @@ export const ScheduleSection = ({ routeId }: Props) => {
     );
   }
 
-  // Próximas 6 llegadas a partir de "ahora"
   const now = new Date();
-  const upcoming = (schedule?.arrivals ?? []).filter((t) => {
+  const upcoming = (schedule?.llegadas ?? []).filter((t) => {
     const [h, m] = t.split(":").map(Number);
     const at = new Date();
     at.setHours(h, m, 0, 0);
     return at >= now;
   }).slice(0, 8);
+
+  const horarios = ruta.horarios;
 
   return (
     <section id="horarios" className="bg-secondary text-secondary-foreground py-20">
@@ -62,19 +63,19 @@ export const ScheduleSection = ({ routeId }: Props) => {
           <div>
             <div className="text-xs uppercase tracking-[0.2em] text-accent font-semibold mb-2">02 · Horarios</div>
             <h2 className="font-display font-bold text-3xl md:text-5xl tracking-tight">
-              {route.name}
+              {ruta.nombre}
             </h2>
           </div>
           <div className="flex items-center gap-3 text-sm">
             <span className="opacity-70">Estación:</span>
             <select
-              value={stationId}
-              onChange={(e) => setStationId(e.target.value)}
+              value={stationId ?? ""}
+              onChange={(e) => setStationId(Number(e.target.value))}
               className="bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             >
-              {routeStations.map((s) => (
+              {rutaEstaciones.map((s) => (
                 <option key={s.id} value={s.id} className="bg-secondary">
-                  {s.name}
+                  {s.nombre}
                 </option>
               ))}
             </select>
@@ -85,10 +86,14 @@ export const ScheduleSection = ({ routeId }: Props) => {
           <div className="rounded-2xl bg-background/5 border border-background/10 p-6">
             <h3 className="font-display font-semibold mb-4 text-accent">Horario de operación</h3>
             <ul className="space-y-3 text-sm">
-              <li className="flex justify-between"><span>Lun — Vie</span><span className="font-mono">{route.operatingHours.weekday.start} – {route.operatingHours.weekday.end}</span></li>
-              <li className="flex justify-between"><span>Sábado</span><span className="font-mono">{route.operatingHours.saturday.start} – {route.operatingHours.saturday.end}</span></li>
-              <li className="flex justify-between"><span>Domingo</span><span className="font-mono">{route.operatingHours.sunday.start} – {route.operatingHours.sunday.end}</span></li>
-              <li className="flex justify-between border-t border-background/10 pt-3 mt-3"><span>Frecuencia</span><span className="font-mono">cada {route.frequencyMinutes} min</span></li>
+              {horarios && (
+                <>
+                  <li className="flex justify-between"><span>Lun — Vie</span><span className="font-mono">{horarios.lun_vie.start} – {horarios.lun_vie.end}</span></li>
+                  <li className="flex justify-between"><span>Sábado</span><span className="font-mono">{horarios.sabado.start} – {horarios.sabado.end}</span></li>
+                  <li className="flex justify-between"><span>Domingo</span><span className="font-mono">{horarios.domingo.start} – {horarios.domingo.end}</span></li>
+                </>
+              )}
+              <li className="flex justify-between border-t border-background/10 pt-3 mt-3"><span>Frecuencia</span><span className="font-mono">cada {ruta.frecuencia_min} min</span></li>
             </ul>
           </div>
 

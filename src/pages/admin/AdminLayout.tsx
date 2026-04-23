@@ -1,18 +1,19 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Bus as BusIcon, FileBarChart2, History, Settings as SettingsIcon,
-  LogOut, Activity, ExternalLink, Menu, X,
+  LayoutDashboard, Bus as BusIcon, FileBarChart2, History, Route as RouteIcon,
+  MapPin, LogOut, Activity, ExternalLink, Menu, X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { isSimulating, startSimulation, stopSimulation } from "@/lib/api/metropolitanoApi";
-import { useEffect } from "react";
 
 const NAV = [
-  { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/admin/buses", label: "Buses", icon: BusIcon },
-  { to: "/admin/reportes", label: "Reportes", icon: FileBarChart2 },
-  { to: "/admin/historial", label: "Historial", icon: History },
+  { to: "/admin",           label: "Dashboard",  icon: LayoutDashboard, end: true },
+  { to: "/admin/buses",     label: "Buses",      icon: BusIcon },
+  { to: "/admin/reportes",  label: "Reportes",   icon: FileBarChart2 },
+  { to: "/admin/historial", label: "Historial",  icon: History },
+  { to: "/admin/rutas",     label: "Rutas",      icon: RouteIcon },
+  { to: "/admin/estaciones",label: "Estaciones", icon: MapPin },
 ];
 
 const AdminLayout = () => {
@@ -31,7 +32,6 @@ const AdminLayout = () => {
 
   return (
     <div className="min-h-screen bg-muted/40 flex">
-      {/* Sidebar */}
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-40 w-64 bg-secondary text-secondary-foreground flex flex-col transform transition-transform ${
           open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
@@ -52,7 +52,7 @@ const AdminLayout = () => {
           </button>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {NAV.map((item) => (
             <NavLink
               key={item.to} to={item.to} end={item.end}
@@ -75,8 +75,7 @@ const AdminLayout = () => {
             }`}
           >
             <span className="flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              Simulación
+              <Activity className="w-4 h-4" /> Simulación
             </span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${simOn ? "bg-success text-success-foreground" : "bg-muted-foreground/30"}`}>
               {simOn ? "ON" : "OFF"}
@@ -90,6 +89,11 @@ const AdminLayout = () => {
           <div className="px-3 py-2 rounded-lg bg-background/5 text-xs">
             <div className="font-semibold truncate">{user?.name}</div>
             <div className="opacity-60 truncate">{user?.email}</div>
+            {user?.role && (
+              <div className="mt-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary uppercase tracking-wider font-bold">
+                {user.role}
+              </div>
+            )}
           </div>
 
           <button
@@ -101,7 +105,6 @@ const AdminLayout = () => {
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="lg:hidden sticky top-0 z-30 bg-background border-b border-border h-14 flex items-center px-4 gap-3">
           <button onClick={() => setOpen(true)} className="p-1">

@@ -13,6 +13,8 @@ import Dashboard from "./pages/admin/Dashboard.tsx";
 import BusesPage from "./pages/admin/BusesPage.tsx";
 import ReportesPage from "./pages/admin/ReportesPage.tsx";
 import HistorialPage from "./pages/admin/HistorialPage.tsx";
+import RutasPage from "./pages/admin/RutasPage.tsx";
+import EstacionesPage from "./pages/admin/EstacionesPage.tsx";
 
 const queryClient = new QueryClient();
 
@@ -38,8 +40,9 @@ const App = () => (
               <Route path="buses" element={<BusesPage />} />
               <Route path="reportes" element={<ReportesPage />} />
               <Route path="historial" element={<HistorialPage />} />
+              <Route path="rutas" element={<RutasPage />} />
+              <Route path="estaciones" element={<EstacionesPage />} />
             </Route>
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

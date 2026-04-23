@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, Bus as BusIcon, AlertTriangle, Users, MapPin, Gauge, Play, Square } from "lucide-react";
+import { Activity, Bus as BusIcon, AlertTriangle, Users, Gauge, MapPin, Play, Square } from "lucide-react";
 import {
-  getStations, listarBuses, listarReportes, isSimulating,
-  startSimulation, stopSimulation, getRoutes,
+  isSimulating, listarBuses, listarEstaciones, listarReportes, listarRutas,
+  startSimulation, stopSimulation,
 } from "@/lib/api/metropolitanoApi";
-import type { Bus, Reporte, Route, Station } from "@/lib/api/types";
+import type { Bus, Estacion, Reporte, Ruta } from "@/lib/api/types";
 import { useStoreVersion } from "@/lib/hooks/useStoreVersion";
 import { FleetMap } from "@/components/admin/FleetMap";
 
@@ -12,27 +12,30 @@ const Dashboard = () => {
   const v = useStoreVersion();
   const [buses, setBuses] = useState<Bus[]>([]);
   const [reportes, setReportes] = useState<Reporte[]>([]);
-  const [stations, setStations] = useState<Station[]>([]);
-  const [routes, setRoutes] = useState<Route[]>([]);
-  const [selectedBusId, setSelectedBusId] = useState<string | null>(null);
+  const [estaciones, setEstaciones] = useState<Estacion[]>([]);
+  const [rutas, setRutas] = useState<Ruta[]>([]);
+  const [selectedBusId, setSelectedBusId] = useState<number | null>(null);
   const [simOn, setSimOn] = useState(isSimulating());
 
   useEffect(() => {
-    Promise.all([listarBuses(), listarReportes(300), getStations(), getRoutes()]).then(
-      ([b, r, s, ro]) => {
-        if (b.ok && b.data) setBuses(b.data);
-        if (r.ok && r.data) setReportes(r.data);
-        setStations(s);
-        setRoutes(ro);
-      }
-    );
+    Promise.all([
+      listarBuses({ page: 1, page_size: 1000 }),
+      listarReportes({ page: 1, page_size: 300 }),
+      listarEstaciones(),
+      listarRutas(),
+    ]).then(([b, r, s, ro]) => {
+      if (b.ok && b.data) setBuses(b.data.items);
+      if (r.ok && r.data) setReportes(r.data.items);
+      setEstaciones(s);
+      setRutas(ro);
+    });
     setSimOn(isSimulating());
   }, [v]);
 
   const reportesByBus = useMemo(() => {
-    const map: Record<string, Reporte[]> = {};
+    const map: Record<number, Reporte[]> = {};
     reportes.forEach((r) => {
-      (map[r.busId] ??= []).push(r);
+      (map[r.bus_id] ??= []).push(r);
     });
     Object.values(map).forEach((list) => list.sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp)));
     return map;
@@ -45,18 +48,16 @@ const Dashboard = () => {
       const last = reportesByBus[b.id]?.[0];
       if (last) {
         conReporte++;
-        const pct = (last.cantidadPasajeros / b.capacidad) * 100;
+        const pct = (last.cantidad_pasajeros / b.capacidad) * 100;
         sumPct += pct;
         if (pct >= 85) llenos++;
-        totalPasajeros += last.cantidadPasajeros;
+        totalPasajeros += last.cantidad_pasajeros;
         const minsAgo = (Date.now() - +new Date(last.timestamp)) / 60000;
         if (minsAgo < 10) activos++;
       }
     });
     return {
-      total,
-      activos,
-      llenos,
+      total, activos, llenos,
       ocupacionMedia: conReporte ? Math.round(sumPct / conReporte) : 0,
       totalPasajeros,
     };
@@ -90,7 +91,6 @@ const Dashboard = () => {
         </button>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: "Buses totales", value: stats.total, icon: BusIcon, color: "text-foreground" },
@@ -109,7 +109,6 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Mapa + actividad */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <div className="xl:col-span-2 space-y-3">
           <div className="flex items-center justify-between">
@@ -123,12 +122,11 @@ const Dashboard = () => {
             </div>
           </div>
           <FleetMap
-            buses={buses} stations={stations} reportesByBus={reportesByBus}
+            buses={buses} estaciones={estaciones} reportesByBus={reportesByBus}
             selectedBusId={selectedBusId} onSelectBus={setSelectedBusId} height="600px"
           />
         </div>
 
-        {/* Actividad reciente */}
         <div className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
             <h2 className="font-display font-semibold flex items-center gap-2">
@@ -142,30 +140,28 @@ const Dashboard = () => {
               </div>
             )}
             {ultimosReportes.map((r) => {
-              const bus = buses.find((b) => b.id === r.busId);
-              const station = stations.find((s) => s.id === r.estacionId);
-              const route = routes.find((rt) => rt.id === bus?.routeId);
-              const pct = r.ocupacionPct ?? 0;
+              const bus = buses.find((b) => b.id === r.bus_id);
+              const est = estaciones.find((s) => s.id === r.estacion_id);
+              const ruta = rutas.find((rt) => rt.id === bus?.ruta_id);
+              const pct = r.ocupacion_pct ?? 0;
               const pctColor = pct >= 85 ? "text-destructive" : pct >= 60 ? "text-warning" : "text-success";
               return (
                 <button
                   key={r.id}
-                  onClick={() => setSelectedBusId(r.busId)}
+                  onClick={() => setSelectedBusId(r.bus_id)}
                   className="w-full text-left p-4 hover:bg-muted/50 transition-smooth"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-mono font-semibold text-sm">{bus?.codigo ?? r.busId}</div>
+                      <div className="font-mono font-semibold text-sm">{bus?.codigo ?? `#${r.bus_id}`}</div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {route?.name} · {station?.name ?? "—"}
+                        {ruta?.nombre} · {est?.nombre ?? "—"}
                       </div>
                     </div>
-                    <div className={`font-display font-bold ${pctColor}`}>
-                      {pct}%
-                    </div>
+                    <div className={`font-display font-bold ${pctColor}`}>{pct}%</div>
                   </div>
                   <div className="flex justify-between text-[11px] text-muted-foreground mt-2">
-                    <span>{r.cantidadPasajeros}/{bus?.capacidad ?? "?"} pas.</span>
+                    <span>{r.cantidad_pasajeros}/{bus?.capacidad ?? "?"} pas.</span>
                     <span>{new Date(r.timestamp).toLocaleTimeString("es-PE")}</span>
                   </div>
                 </button>

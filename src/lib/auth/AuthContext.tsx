@@ -1,16 +1,19 @@
 // ============================================================
 // Auth DEMO — solo localStorage (MVP de evaluación)
-// En producción reemplazar por Lovable Cloud / Supabase Auth.
+// Espejo de la tabla `usuarios` (rol = ENUM usuario_rol).
+// En producción reemplazar por POST /auth/login del backend NestJS.
 // ============================================================
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import type { UsuarioRol } from "@/lib/api/types";
 
-const AUTH_KEY = "metropolitano_auth_v1";
-const USERS_KEY = "metropolitano_users_v1";
+const AUTH_KEY = "metropolitano_auth_v2";
+const USERS_KEY = "metropolitano_users_v2";
+const TOKEN_KEY = "metropolitano_token";
 
 export interface AuthUser {
   email: string;
   name: string;
-  role: "admin" | "operador";
+  role: UsuarioRol;
 }
 
 interface StoredUser extends AuthUser { passwordHash: string; }
@@ -25,7 +28,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// hash trivial — SOLO DEMO, no usar en producción
+// hash trivial — SOLO DEMO
 function hash(s: string): string {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
@@ -37,9 +40,9 @@ function loadUsers(): StoredUser[] {
     const raw = localStorage.getItem(USERS_KEY);
     if (raw) return JSON.parse(raw);
   } catch { /* */ }
-  // sembrar admin demo
   const seed: StoredUser[] = [
     { email: "admin@metropolitano.pe", name: "Admin Demo", role: "admin", passwordHash: hash("admin1234") },
+    { email: "supervisor@metropolitano.pe", name: "Supervisor Demo", role: "supervisor", passwordHash: hash("super1234") },
   ];
   localStorage.setItem(USERS_KEY, JSON.stringify(seed));
   return seed;
@@ -68,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (found.passwordHash !== hash(password)) return { ok: false, error: "Contraseña incorrecta" };
     const u: AuthUser = { email: found.email, name: found.name, role: found.role };
     localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+    localStorage.setItem(TOKEN_KEY, `demo.${hash(found.email)}.token`);
     setUser(u);
     return { ok: true };
   };
@@ -83,12 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveUsers([...users, newUser]);
     const u: AuthUser = { email: newUser.email, name: newUser.name, role: newUser.role };
     localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+    localStorage.setItem(TOKEN_KEY, `demo.${hash(newUser.email)}.token`);
     setUser(u);
     return { ok: true };
   };
 
   const logout = () => {
     localStorage.removeItem(AUTH_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
   };
 

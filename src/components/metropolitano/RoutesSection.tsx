@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
 import { Clock, MapPin } from "lucide-react";
-import { getRoutes } from "@/lib/api/metropolitanoApi";
-import type { Route } from "@/lib/api/types";
+import { listarRutas } from "@/lib/api/metropolitanoApi";
+import type { Ruta } from "@/lib/api/types";
 
 interface Props {
-  selectedRouteId: string | null;
-  onSelect: (id: string) => void;
+  selectedRouteId: number | null;
+  onSelect: (id: number) => void;
 }
 
 export const RoutesSection = ({ selectedRouteId, onSelect }: Props) => {
-  const [routes, setRoutes] = useState<Route[]>([]);
+  const [rutas, setRutas] = useState<Ruta[]>([]);
 
   useEffect(() => {
-    getRoutes().then(setRoutes);
+    listarRutas().then(setRutas);
   }, []);
 
   return (
@@ -30,12 +30,12 @@ export const RoutesSection = ({ selectedRouteId, onSelect }: Props) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {routes.map((route) => {
-          const active = route.id === selectedRouteId;
+        {rutas.map((ruta) => {
+          const active = ruta.id === selectedRouteId;
           return (
             <button
-              key={route.id}
-              onClick={() => onSelect(route.id)}
+              key={ruta.id}
+              onClick={() => onSelect(ruta.id)}
               className={`text-left rounded-2xl p-6 border-2 transition-smooth shadow-card hover:shadow-elegant hover:-translate-y-1 ${
                 active
                   ? "border-primary bg-card ring-4 ring-primary/10"
@@ -45,26 +45,26 @@ export const RoutesSection = ({ selectedRouteId, onSelect }: Props) => {
               <div className="flex items-start justify-between mb-4">
                 <div
                   className="w-12 h-12 rounded-xl flex items-center justify-center font-display font-bold text-lg text-primary-foreground shadow-md"
-                  style={{ backgroundColor: route.color }}
+                  style={{ backgroundColor: ruta.color }}
                 >
-                  {route.code}
+                  {ruta.codigo}
                 </div>
                 <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground font-medium">
-                  {route.service}
+                  {ruta.servicio.replace("_", " ")}
                 </span>
               </div>
 
-              <h3 className="font-display font-bold text-xl mb-2">{route.name}</h3>
-              <p className="text-sm text-muted-foreground mb-5 line-clamp-2">{route.description}</p>
+              <h3 className="font-display font-bold text-xl mb-2">{ruta.nombre}</h3>
+              <p className="text-sm text-muted-foreground mb-5 line-clamp-2">{ruta.descripcion ?? ""}</p>
 
               <div className="flex items-center gap-4 text-xs text-muted-foreground border-t border-border pt-4">
                 <span className="flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5" />
-                  {route.stationIds.length} estaciones
+                  {ruta.estacion_ids?.length ?? 0} estaciones
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5" />
-                  cada {route.frequencyMinutes} min
+                  cada {ruta.frecuencia_min} min
                 </span>
               </div>
             </button>

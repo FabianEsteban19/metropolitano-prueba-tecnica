@@ -1,38 +1,61 @@
 // ============================================================
 // Capa de servicio del Metropolitano — MVP de gestión interna
+// Espejo de los endpoints de tu backend NestJS.
 // ------------------------------------------------------------
 //
-//   ENDPOINTS REST (espec. del MVP)
+//   ENDPOINTS REST esperados
 //   ─────────────────────────────────────────────────────
-//   POST   /buses                  → crear bus
-//   GET    /buses                  → listar buses
-//   GET    /buses/:id              → obtener bus por id
-//   DELETE /buses/:id              → eliminar bus
-//   POST   /buses/:id/reportes     → registrar reporte
-//   GET    /buses/estado-actual    → último estado de cada bus
-//   GET    /buses/:id/historial    → historial de reportes (extra)
-//   GET    /reportes               → listado global
-//   WS     /buses/live             → tracking en vivo (extra)
+//   AUTH
+//   POST   /auth/login                  → { access_token, user }
 //
-//   Para usar contra un backend real, definir:
-//     VITE_METROPOLITANO_API_URL
-//     VITE_METROPOLITANO_WS_URL  (opcional)
+//   BUSES
+//   POST   /buses                       (CreateBusDto)
+//   GET    /buses?page=&page_size=&estado=&ruta_id=&search=&filtro=
+//   GET    /buses/:id
+//   PATCH  /buses/:id                   (UpdateBusDto)
+//   DELETE /buses/:id
+//   GET    /buses/estado-actual         → último estado por bus (vista)
+//   GET    /buses/:id/historial?limit=&desde=&hasta=
 //
-//   Sin esas variables, el módulo opera contra un store en memoria
-//   con persistencia en localStorage (modo MVP / demo).
+//   REPORTES
+//   POST   /buses/:id/reportes          (CreateReporteDto)
+//   GET    /reportes?page=&page_size=&bus_id=
+//
+//   RUTAS / ESTACIONES
+//   GET    /rutas             POST /rutas       PATCH /rutas/:id    DELETE /rutas/:id
+//   GET    /estaciones        POST /estaciones  PATCH /estaciones/:id  DELETE /estaciones/:id
+//   GET    /horarios/:rutaId/:estacionId
+//
+//   LIVE
+//   WS     /live/buses
+//
+//   Configuración:
+//     VITE_METROPOLITANO_API_URL   (ej. http://localhost:3000)
+//     VITE_METROPOLITANO_WS_URL    (opcional)
+//
+//   Sin esas variables, opera contra un store en memoria con
+//   persistencia en localStorage (modo MVP / demo).
 // ============================================================
 
 import type {
   ApiResponse,
   Bus,
   BusLiveView,
+  CreateBusDto,
+  CreateEstacionDto,
+  CreateReporteDto,
+  CreateRutaDto,
+  Estacion,
   LiveUpdate,
+  Paginated,
   Reporte,
-  Route,
+  Ruta,
   ScheduleEntry,
-  Station,
+  UpdateBusDto,
+  UpdateEstacionDto,
+  UpdateRutaDto,
 } from "./types";
-import { ROUTES, STATIONS, generateSchedule, seedBuses, seedReportes } from "./mockData";
+import { ESTACIONES, RUTAS, generateSchedule, seedBuses, seedReportes } from "./mockData";
 
 const API_URL = import.meta.env.VITE_METROPOLITANO_API_URL as string | undefined;
 const WS_URL = import.meta.env.VITE_METROPOLITANO_WS_URL as string | undefined;
@@ -41,25 +64,46 @@ const USE_MOCK = !API_URL;
 // ============================================================
 // Store local (modo mock) — persistencia en localStorage
 // ============================================================
-const STORE_KEY = "metropolitano_store_v1";
+const STORE_KEY = "metropolitano_store_v2";
 
 interface Store {
   buses: Bus[];
   reportes: Reporte[];
+  rutas: Ruta[];
+  estaciones: Estacion[];
+  next_bus_id: number;
+  next_reporte_id: number;
+  next_ruta_id: number;
+  next_estacion_id: number;
+}
+
+function initialStore(): Store {
+  const buses = seedBuses();
+  const reportes = seedReportes();
+  return {
+    buses,
+    reportes,
+    rutas: [...RUTAS],
+    estaciones: [...ESTACIONES],
+    next_bus_id: Math.max(0, ...buses.map((b) => b.id)) + 1,
+    next_reporte_id: Math.max(0, ...reportes.map((r) => r.id)) + 1,
+    next_ruta_id: Math.max(0, ...RUTAS.map((r) => r.id)) + 1,
+    next_estacion_id: Math.max(0, ...ESTACIONES.map((e) => e.id)) + 1,
+  };
 }
 
 function loadStore(): Store {
-  if (typeof window === "undefined") return { buses: seedBuses(), reportes: seedReportes() };
+  if (typeof window === "undefined") return initialStore();
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) {
-      const initial: Store = { buses: seedBuses(), reportes: seedReportes() };
-      localStorage.setItem(STORE_KEY, JSON.stringify(initial));
-      return initial;
+      const init = initialStore();
+      localStorage.setItem(STORE_KEY, JSON.stringify(init));
+      return init;
     }
     return JSON.parse(raw) as Store;
   } catch {
-    return { buses: seedBuses(), reportes: seedReportes() };
+    return initialStore();
   }
 }
 
@@ -71,44 +115,48 @@ function saveStore(s: Store) {
 
 let store: Store = loadStore();
 
-/** Solo para testing: limpia el store y vuelve a sembrar. */
+/** Limpia el store y re-siembra (útil para testing / reset). */
 export function resetStore() {
-  store = { buses: seedBuses(), reportes: seedReportes() };
+  store = initialStore();
   saveStore(store);
+  notify();
 }
 
 // ============================================================
 // Helpers
 // ============================================================
-function uid(prefix = "id"): string {
-  return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function nearestStation(lat: number, lng: number) {
-  let best = STATIONS[0];
+function nearestEstacion(lat: number, lng: number): Estacion {
+  let best = store.estaciones[0];
   let bestD = Infinity;
-  for (const s of STATIONS) {
-    const d = (s.lat - lat) ** 2 + (s.lng - lng) ** 2;
+  for (const s of store.estaciones) {
+    const d = (s.latitud - lat) ** 2 + (s.longitud - lng) ** 2;
     if (d < bestD) { bestD = d; best = s; }
   }
   return best;
 }
 
-function attachLastReport(bus: Bus): Bus {
+function attachUltimoReporte(bus: Bus): Bus {
   const reports = store.reportes
-    .filter((r) => r.busId === bus.id)
+    .filter((r) => r.bus_id === bus.id)
     .sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp));
-  return { ...bus, ultimoReporte: reports[0] ?? null };
+  return { ...bus, ultimo_reporte: reports[0] ?? null };
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
   try {
+    const token = typeof window !== "undefined" ? localStorage.getItem("metropolitano_token") : null;
     const res = await fetch(`${API_URL}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers ?? {}),
+      },
     });
     const json = await res.json();
-    if (!res.ok) return { ok: false, error: json.error ?? { code: "HTTP_ERROR", message: res.statusText } };
+    if (!res.ok) {
+      return { ok: false, error: json.error ?? { code: "HTTP_ERROR", message: json.message ?? res.statusText } };
+    }
     return { ok: true, data: json as T };
   } catch (e: unknown) {
     return { ok: false, error: { code: "NETWORK", message: e instanceof Error ? e.message : "network error" } };
@@ -119,92 +167,145 @@ async function http<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>
 // Endpoints — Buses
 // ============================================================
 
-/** POST /buses */
-export async function crearBus(input: { codigo: string; capacidad: number; routeId: string; plate: string }): Promise<ApiResponse<Bus>> {
-  // ---- validaciones ----
-  if (!input.codigo?.trim()) return { ok: false, error: { code: "VALIDATION", field: "codigo", message: "El código es obligatorio" } };
-  if (!Number.isFinite(input.capacidad) || input.capacidad <= 0) {
-    return { ok: false, error: { code: "VALIDATION", field: "capacidad", message: "La capacidad debe ser mayor a 0" } };
-  }
-  if (input.capacidad > 300) {
-    return { ok: false, error: { code: "VALIDATION", field: "capacidad", message: "La capacidad máxima permitida es 300" } };
-  }
-  if (!ROUTES.find((r) => r.id === input.routeId)) {
-    return { ok: false, error: { code: "VALIDATION", field: "routeId", message: "Ruta inválida" } };
-  }
-  if (store.buses.some((b) => b.codigo.toLowerCase() === input.codigo.toLowerCase())) {
-    return { ok: false, error: { code: "DUPLICATE", field: "codigo", message: "Ya existe un bus con ese código" } };
+export type BusFilter = "todos" | "lleno" | "medio" | "bajo" | "sin_reporte" | "fuera_servicio";
+
+export interface ListarBusesParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  ruta_id?: number | null;
+  estado?: string | null;
+  filtro?: BusFilter;
+}
+
+/** GET /buses */
+export async function listarBuses(params: ListarBusesParams = {}): Promise<ApiResponse<Paginated<Bus>>> {
+  if (USE_MOCK) {
+    let list = store.buses.map(attachUltimoReporte);
+
+    if (params.search) {
+      const q = params.search.toLowerCase();
+      list = list.filter((b) =>
+        b.codigo.toLowerCase().includes(q) ||
+        (b.placa ?? "").toLowerCase().includes(q),
+      );
+    }
+    if (params.ruta_id) list = list.filter((b) => b.ruta_id === params.ruta_id);
+    if (params.estado) list = list.filter((b) => b.estado === params.estado);
+
+    if (params.filtro && params.filtro !== "todos") {
+      list = list.filter((b) => {
+        const pct = b.ultimo_reporte?.ocupacion_pct ?? -1;
+        if (params.filtro === "sin_reporte") return !b.ultimo_reporte;
+        if (params.filtro === "fuera_servicio") return b.estado === "fuera_servicio";
+        if (params.filtro === "lleno") return pct >= 85;
+        if (params.filtro === "medio") return pct >= 60 && pct < 85;
+        if (params.filtro === "bajo") return pct >= 0 && pct < 60;
+        return true;
+      });
+    }
+
+    const total = list.length;
+    const page = params.page ?? 1;
+    const page_size = params.page_size ?? 10;
+    const items = list.slice((page - 1) * page_size, page * page_size);
+    return { ok: true, data: { items, total, page, page_size } };
   }
 
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => v != null && qs.set(k, String(v)));
+  return http<Paginated<Bus>>(`/buses?${qs.toString()}`);
+}
+
+/** GET /buses/:id */
+export async function obtenerBus(id: number): Promise<ApiResponse<Bus>> {
   if (USE_MOCK) {
+    const bus = store.buses.find((b) => b.id === id);
+    if (!bus) return { ok: false, error: { code: "NOT_FOUND", message: "Bus no encontrado" } };
+    return { ok: true, data: attachUltimoReporte(bus) };
+  }
+  return http<Bus>(`/buses/${id}`);
+}
+
+/** POST /buses */
+export async function crearBus(input: CreateBusDto): Promise<ApiResponse<Bus>> {
+  if (!input.codigo?.trim()) return { ok: false, error: { code: "VALIDATION", field: "codigo", message: "El código es obligatorio" } };
+  if (!Number.isFinite(input.capacidad) || input.capacidad <= 0)
+    return { ok: false, error: { code: "VALIDATION", field: "capacidad", message: "La capacidad debe ser > 0" } };
+  if (input.capacidad > 300)
+    return { ok: false, error: { code: "VALIDATION", field: "capacidad", message: "Capacidad máxima 300" } };
+
+  if (USE_MOCK) {
+    if (store.buses.some((b) => b.codigo.toLowerCase() === input.codigo.toLowerCase()))
+      return { ok: false, error: { code: "DUPLICATE", field: "codigo", message: "Ya existe un bus con ese código" } };
+    if (input.placa && store.buses.some((b) => b.placa?.toLowerCase() === input.placa!.toLowerCase()))
+      return { ok: false, error: { code: "DUPLICATE", field: "placa", message: "Placa ya registrada" } };
+    if (input.ruta_id && !store.rutas.find((r) => r.id === input.ruta_id))
+      return { ok: false, error: { code: "VALIDATION", field: "ruta_id", message: "Ruta inválida" } };
+
     const bus: Bus = {
-      id: uid("bus"),
+      id: store.next_bus_id++,
       codigo: input.codigo.trim().toUpperCase(),
       capacidad: input.capacidad,
-      routeId: input.routeId,
-      plate: input.plate.trim().toUpperCase(),
-      status: "en_ruta",
-      createdAt: new Date().toISOString(),
-      ultimoReporte: null,
+      placa: input.placa?.trim().toUpperCase() ?? null,
+      ruta_id: input.ruta_id ?? null,
+      estado: input.estado ?? "fuera_servicio",
+      created_at: new Date().toISOString(),
+      ultimo_reporte: null,
     };
-    store.buses = [...store.buses, bus];
+    store.buses.push(bus);
     saveStore(store);
+    notify();
     return { ok: true, data: bus };
   }
   return http<Bus>("/buses", { method: "POST", body: JSON.stringify(input) });
 }
 
-/** GET /buses */
-export async function listarBuses(): Promise<ApiResponse<Bus[]>> {
+/** PATCH /buses/:id */
+export async function actualizarBus(id: number, patch: UpdateBusDto): Promise<ApiResponse<Bus>> {
   if (USE_MOCK) {
-    return { ok: true, data: store.buses.map(attachLastReport) };
-  }
-  return http<Bus[]>("/buses");
-}
+    const idx = store.buses.findIndex((b) => b.id === id);
+    if (idx < 0) return { ok: false, error: { code: "NOT_FOUND", message: "Bus no encontrado" } };
+    if (patch.capacidad !== undefined && patch.capacidad <= 0)
+      return { ok: false, error: { code: "VALIDATION", field: "capacidad", message: "Capacidad inválida" } };
+    if (patch.codigo && store.buses.some((b) => b.id !== id && b.codigo.toLowerCase() === patch.codigo!.toLowerCase()))
+      return { ok: false, error: { code: "DUPLICATE", field: "codigo", message: "Código duplicado" } };
 
-/** GET /buses/:id */
-export async function obtenerBus(id: string): Promise<ApiResponse<Bus>> {
-  if (USE_MOCK) {
-    const bus = store.buses.find((b) => b.id === id);
-    if (!bus) return { ok: false, error: { code: "NOT_FOUND", message: "Bus no encontrado" } };
-    return { ok: true, data: attachLastReport(bus) };
+    store.buses[idx] = {
+      ...store.buses[idx],
+      ...patch,
+      placa: patch.placa !== undefined ? (patch.placa?.trim().toUpperCase() ?? null) : store.buses[idx].placa,
+      codigo: patch.codigo ? patch.codigo.trim().toUpperCase() : store.buses[idx].codigo,
+    };
+    saveStore(store);
+    notify();
+    return { ok: true, data: attachUltimoReporte(store.buses[idx]) };
   }
-  return http<Bus>(`/buses/${id}`);
+  return http<Bus>(`/buses/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
 /** DELETE /buses/:id */
-export async function eliminarBus(id: string): Promise<ApiResponse<{ id: string }>> {
+export async function eliminarBus(id: number): Promise<ApiResponse<{ id: number }>> {
   if (USE_MOCK) {
     const exists = store.buses.find((b) => b.id === id);
     if (!exists) return { ok: false, error: { code: "NOT_FOUND", message: "Bus no encontrado" } };
     store.buses = store.buses.filter((b) => b.id !== id);
-    store.reportes = store.reportes.filter((r) => r.busId !== id);
+    store.reportes = store.reportes.filter((r) => r.bus_id !== id);
     saveStore(store);
+    notify();
     return { ok: true, data: { id } };
   }
   return http(`/buses/${id}`, { method: "DELETE" });
 }
 
-/** PATCH /buses/:id */
-export async function actualizarBus(id: string, patch: Partial<Pick<Bus, "codigo" | "capacidad" | "routeId" | "plate" | "status">>): Promise<ApiResponse<Bus>> {
-  if (USE_MOCK) {
-    const idx = store.buses.findIndex((b) => b.id === id);
-    if (idx < 0) return { ok: false, error: { code: "NOT_FOUND", message: "Bus no encontrado" } };
-    if (patch.capacidad !== undefined && patch.capacidad <= 0) {
-      return { ok: false, error: { code: "VALIDATION", field: "capacidad", message: "Capacidad inválida" } };
-    }
-    store.buses[idx] = { ...store.buses[idx], ...patch };
-    saveStore(store);
-    return { ok: true, data: attachLastReport(store.buses[idx]) };
-  }
-  return http<Bus>(`/buses/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+/** PATCH /buses/:id/estado — atajo para deshabilitar / cambiar estado */
+export async function cambiarEstadoBus(id: number, estado: Bus["estado"]): Promise<ApiResponse<Bus>> {
+  return actualizarBus(id, { estado });
 }
 
-/** GET /buses/estado-actual — último estado por bus */
+/** GET /buses/estado-actual — vista último estado por bus */
 export async function obtenerEstadoActual(): Promise<ApiResponse<Bus[]>> {
-  if (USE_MOCK) {
-    return { ok: true, data: store.buses.map(attachLastReport) };
-  }
+  if (USE_MOCK) return { ok: true, data: store.buses.map(attachUltimoReporte) };
   return http<Bus[]>("/buses/estado-actual");
 }
 
@@ -213,64 +314,56 @@ export async function obtenerEstadoActual(): Promise<ApiResponse<Bus[]>> {
 // ============================================================
 
 /** POST /buses/:id/reportes */
-export async function registrarReporte(input: {
-  busId: string;
-  latitud: number;
-  longitud: number;
-  cantidadPasajeros: number;
-  velocidadKmh?: number;
-}): Promise<ApiResponse<Reporte>> {
-  // validaciones
+export async function registrarReporte(input: CreateReporteDto): Promise<ApiResponse<Reporte>> {
   if (typeof input.latitud !== "number" || input.latitud < -90 || input.latitud > 90)
     return { ok: false, error: { code: "VALIDATION", field: "latitud", message: "Latitud fuera de rango (-90, 90)" } };
   if (typeof input.longitud !== "number" || input.longitud < -180 || input.longitud > 180)
     return { ok: false, error: { code: "VALIDATION", field: "longitud", message: "Longitud fuera de rango (-180, 180)" } };
-  if (!Number.isInteger(input.cantidadPasajeros) || input.cantidadPasajeros < 0)
-    return { ok: false, error: { code: "VALIDATION", field: "cantidadPasajeros", message: "Pasajeros debe ser entero ≥ 0" } };
+  if (!Number.isInteger(input.cantidad_pasajeros) || input.cantidad_pasajeros < 0)
+    return { ok: false, error: { code: "VALIDATION", field: "cantidad_pasajeros", message: "Pasajeros debe ser entero ≥ 0" } };
 
   if (USE_MOCK) {
-    const bus = store.buses.find((b) => b.id === input.busId);
+    const bus = store.buses.find((b) => b.id === input.bus_id);
     if (!bus) return { ok: false, error: { code: "NOT_FOUND", message: "Bus no encontrado" } };
-
-    // 🚨 regla del enunciado: pasajeros no puede exceder capacidad
-    if (input.cantidadPasajeros > bus.capacidad) {
+    if (input.cantidad_pasajeros > bus.capacidad)
       return {
         ok: false,
         error: {
           code: "CAPACITY_EXCEEDED",
-          field: "cantidadPasajeros",
-          message: `Pasajeros (${input.cantidadPasajeros}) excede la capacidad del bus (${bus.capacidad}).`,
+          field: "cantidad_pasajeros",
+          message: `Pasajeros (${input.cantidad_pasajeros}) excede la capacidad del bus (${bus.capacidad}).`,
         },
       };
-    }
-
-    const station = nearestStation(input.latitud, input.longitud);
-    const reporte: Reporte = {
-      id: uid("rep"),
-      busId: input.busId,
+    const estacion = input.estacion_id
+      ? store.estaciones.find((s) => s.id === input.estacion_id) ?? nearestEstacion(input.latitud, input.longitud)
+      : nearestEstacion(input.latitud, input.longitud);
+    const rep: Reporte = {
+      id: store.next_reporte_id++,
+      bus_id: input.bus_id,
       latitud: input.latitud,
       longitud: input.longitud,
-      cantidadPasajeros: input.cantidadPasajeros,
+      cantidad_pasajeros: input.cantidad_pasajeros,
       timestamp: new Date().toISOString(),
-      estacionId: station.id,
-      ocupacionPct: Math.round((input.cantidadPasajeros / bus.capacidad) * 100),
-      velocidadKmh: input.velocidadKmh,
+      estacion_id: estacion.id,
+      ocupacion_pct: Math.round((input.cantidad_pasajeros / bus.capacidad) * 100),
+      velocidad_kmh: input.velocidad_kmh ?? null,
     };
-    store.reportes = [...store.reportes, reporte];
+    store.reportes.push(rep);
     saveStore(store);
-    return { ok: true, data: reporte };
+    notify();
+    return { ok: true, data: rep };
   }
-  return http<Reporte>(`/buses/${input.busId}/reportes`, { method: "POST", body: JSON.stringify(input) });
+  return http<Reporte>(`/buses/${input.bus_id}/reportes`, { method: "POST", body: JSON.stringify(input) });
 }
 
 /** GET /buses/:id/historial?limit=&desde=&hasta= */
 export async function obtenerHistorial(
-  busId: string,
+  busId: number,
   opts: { limit?: number; desde?: string; hasta?: string } = {},
 ): Promise<ApiResponse<Reporte[]>> {
   if (USE_MOCK) {
     let list = store.reportes
-      .filter((r) => r.busId === busId)
+      .filter((r) => r.bus_id === busId)
       .sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp));
     if (opts.desde) list = list.filter((r) => r.timestamp >= opts.desde!);
     if (opts.hasta) list = list.filter((r) => r.timestamp <= opts.hasta!);
@@ -284,54 +377,142 @@ export async function obtenerHistorial(
   return http<Reporte[]>(`/buses/${busId}/historial?${qs.toString()}`);
 }
 
-/** GET /reportes — global */
-export async function listarReportes(limit = 50): Promise<ApiResponse<Reporte[]>> {
+/** GET /reportes — listado global con paginación */
+export async function listarReportes(params: { page?: number; page_size?: number; bus_id?: number | null } = {}): Promise<ApiResponse<Paginated<Reporte>>> {
   if (USE_MOCK) {
-    const list = [...store.reportes]
-      .sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp))
-      .slice(0, limit);
-    return { ok: true, data: list };
+    let list = [...store.reportes];
+    if (params.bus_id) list = list.filter((r) => r.bus_id === params.bus_id);
+    list.sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp));
+    const total = list.length;
+    const page = params.page ?? 1;
+    const page_size = params.page_size ?? 20;
+    const items = list.slice((page - 1) * page_size, page * page_size);
+    return { ok: true, data: { items, total, page, page_size } };
   }
-  return http<Reporte[]>(`/reportes?limit=${limit}`);
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => v != null && qs.set(k, String(v)));
+  return http<Paginated<Reporte>>(`/reportes?${qs.toString()}`);
 }
 
 // ============================================================
-// Catálogos: rutas y estaciones
+// Endpoints — Rutas
 // ============================================================
-export async function getRoutes(): Promise<Route[]> {
-  if (USE_MOCK) return ROUTES;
-  const r = await http<Route[]>("/routes");
+export async function listarRutas(): Promise<Ruta[]> {
+  if (USE_MOCK) return [...store.rutas];
+  const r = await http<Ruta[]>("/rutas");
   return r.data ?? [];
 }
-export async function getRouteById(id: string): Promise<Route | undefined> {
-  return ROUTES.find((r) => r.id === id);
+
+export async function obtenerRuta(id: number): Promise<ApiResponse<Ruta>> {
+  if (USE_MOCK) {
+    const r = store.rutas.find((x) => x.id === id);
+    return r ? { ok: true, data: r } : { ok: false, error: { code: "NOT_FOUND", message: "Ruta no encontrada" } };
+  }
+  return http<Ruta>(`/rutas/${id}`);
 }
-export async function getStations(): Promise<Station[]> {
-  if (USE_MOCK) return STATIONS;
-  const r = await http<Station[]>("/stations");
-  return r.data ?? [];
+
+export async function crearRuta(dto: CreateRutaDto): Promise<ApiResponse<Ruta>> {
+  if (!dto.codigo?.trim()) return { ok: false, error: { code: "VALIDATION", field: "codigo", message: "Código requerido" } };
+  if (!dto.nombre?.trim()) return { ok: false, error: { code: "VALIDATION", field: "nombre", message: "Nombre requerido" } };
+  if (USE_MOCK) {
+    if (store.rutas.some((r) => r.codigo.toLowerCase() === dto.codigo.toLowerCase()))
+      return { ok: false, error: { code: "DUPLICATE", field: "codigo", message: "Código de ruta duplicado" } };
+    const ruta: Ruta = {
+      id: store.next_ruta_id++, ...dto,
+      codigo: dto.codigo.trim().toUpperCase(),
+      estacion_ids: [],
+    };
+    store.rutas.push(ruta);
+    saveStore(store);
+    notify();
+    return { ok: true, data: ruta };
+  }
+  return http<Ruta>("/rutas", { method: "POST", body: JSON.stringify(dto) });
 }
-export async function getSchedule(routeId: string, stationId: string): Promise<ScheduleEntry> {
-  if (USE_MOCK) return generateSchedule(routeId, stationId);
-  const r = await http<ScheduleEntry>(`/schedules/${routeId}/${stationId}`);
-  return r.data ?? { routeId, stationId, arrivals: [] };
+
+export async function actualizarRuta(id: number, patch: UpdateRutaDto): Promise<ApiResponse<Ruta>> {
+  if (USE_MOCK) {
+    const idx = store.rutas.findIndex((r) => r.id === id);
+    if (idx < 0) return { ok: false, error: { code: "NOT_FOUND", message: "Ruta no encontrada" } };
+    store.rutas[idx] = { ...store.rutas[idx], ...patch };
+    saveStore(store);
+    notify();
+    return { ok: true, data: store.rutas[idx] };
+  }
+  return http<Ruta>(`/rutas/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export async function eliminarRuta(id: number): Promise<ApiResponse<{ id: number }>> {
+  if (USE_MOCK) {
+    if (store.buses.some((b) => b.ruta_id === id))
+      return { ok: false, error: { code: "CONFLICT", message: "No se puede eliminar: hay buses asignados a esta ruta" } };
+    store.rutas = store.rutas.filter((r) => r.id !== id);
+    saveStore(store);
+    notify();
+    return { ok: true, data: { id } };
+  }
+  return http(`/rutas/${id}`, { method: "DELETE" });
 }
 
 // ============================================================
-// Simulación automática de movimiento (extra del enunciado)
+// Endpoints — Estaciones
+// ============================================================
+export async function listarEstaciones(): Promise<Estacion[]> {
+  if (USE_MOCK) return [...store.estaciones].sort((a, b) => a.orden - b.orden);
+  const r = await http<Estacion[]>("/estaciones");
+  return r.data ?? [];
+}
+
+export async function crearEstacion(dto: CreateEstacionDto): Promise<ApiResponse<Estacion>> {
+  if (!dto.nombre?.trim()) return { ok: false, error: { code: "VALIDATION", field: "nombre", message: "Nombre requerido" } };
+  if (USE_MOCK) {
+    const est: Estacion = { id: store.next_estacion_id++, ...dto };
+    store.estaciones.push(est);
+    saveStore(store);
+    notify();
+    return { ok: true, data: est };
+  }
+  return http<Estacion>("/estaciones", { method: "POST", body: JSON.stringify(dto) });
+}
+
+export async function actualizarEstacion(id: number, patch: UpdateEstacionDto): Promise<ApiResponse<Estacion>> {
+  if (USE_MOCK) {
+    const idx = store.estaciones.findIndex((e) => e.id === id);
+    if (idx < 0) return { ok: false, error: { code: "NOT_FOUND", message: "Estación no encontrada" } };
+    store.estaciones[idx] = { ...store.estaciones[idx], ...patch };
+    saveStore(store);
+    notify();
+    return { ok: true, data: store.estaciones[idx] };
+  }
+  return http<Estacion>(`/estaciones/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export async function eliminarEstacion(id: number): Promise<ApiResponse<{ id: number }>> {
+  if (USE_MOCK) {
+    store.estaciones = store.estaciones.filter((e) => e.id !== id);
+    saveStore(store);
+    notify();
+    return { ok: true, data: { id } };
+  }
+  return http(`/estaciones/${id}`, { method: "DELETE" });
+}
+
+export async function obtenerHorario(rutaId: number, estacionId: number): Promise<ScheduleEntry> {
+  if (USE_MOCK) return generateSchedule(rutaId, estacionId);
+  const r = await http<ScheduleEntry>(`/horarios/${rutaId}/${estacionId}`);
+  return r.data ?? { ruta_id: rutaId, estacion_id: estacionId, llegadas: [] };
+}
+
+// ============================================================
+// Simulación automática (extra del enunciado)
 // ============================================================
 let simInterval: ReturnType<typeof setInterval> | null = null;
-let simListeners = new Set<() => void>();
+const simListeners = new Set<() => void>();
 
-/** ¿Está corriendo la simulación? */
-export function isSimulating(): boolean {
-  return simInterval !== null;
-}
+export function isSimulating(): boolean { return simInterval !== null; }
 
-/** Notifica a los suscriptores que el store cambió. */
 function notify() {
   simListeners.forEach((fn) => fn());
-  // Notificar también vía storage event para otros tabs
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("metropolitano:store-updated"));
   }
@@ -339,62 +520,47 @@ function notify() {
 
 export function onStoreChange(fn: () => void): () => void {
   simListeners.add(fn);
-  return () => simListeners.delete(fn);
+  return () => { simListeners.delete(fn); };
 }
 
-/** Inicia la simulación: cada `intervalMs` mueve buses y genera reportes. */
 export function startSimulation(intervalMs = 3000) {
   if (simInterval) return;
   const tick = () => {
     store.buses.forEach((bus) => {
-      const route = ROUTES.find((r) => r.id === bus.routeId);
-      if (!route) return;
-      const stations = route.stationIds
-        .map((id) => STATIONS.find((s) => s.id === id))
-        .filter(Boolean) as Station[];
+      if (bus.estado === "fuera_servicio") return;
+      const ruta = store.rutas.find((r) => r.id === bus.ruta_id);
+      const ids = ruta?.estacion_ids ?? [];
+      const stations = ids.map((id) => store.estaciones.find((s) => s.id === id)!).filter(Boolean);
       if (!stations.length) return;
-
       const last = store.reportes
-        .filter((r) => r.busId === bus.id)
+        .filter((r) => r.bus_id === bus.id)
         .sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp))[0];
-
-      // estación actual del bus (más cercana al último reporte) o la primera
       let curIdx = 0;
-      if (last?.estacionId) {
-        const i = stations.findIndex((s) => s.id === last.estacionId);
+      if (last?.estacion_id) {
+        const i = stations.findIndex((s) => s.id === last.estacion_id);
         if (i >= 0) curIdx = i;
       }
-      // 30% de probabilidad de avanzar a la próxima estación
       const advance = Math.random() < 0.45;
       const nextIdx = advance ? (curIdx + 1) % stations.length : curIdx;
       const target = stations[nextIdx];
-
-      // pequeña perturbación geográfica
-      const lat = target.lat + (Math.random() - 0.5) * 0.0015;
-      const lng = target.lng + (Math.random() - 0.5) * 0.0015;
-
-      // pasajeros: variar respecto al último
-      const base = last?.cantidadPasajeros ?? Math.floor(bus.capacidad * 0.4);
+      const lat = target.latitud + (Math.random() - 0.5) * 0.0015;
+      const lng = target.longitud + (Math.random() - 0.5) * 0.0015;
+      const base = last?.cantidad_pasajeros ?? Math.floor(bus.capacidad * 0.4);
       const delta = Math.floor((Math.random() - 0.45) * 25);
-      const pasajeros = Math.max(0, Math.min(bus.capacidad, base + delta));
-
-      const reporte: Reporte = {
-        id: uid("rep"),
-        busId: bus.id,
+      const pas = Math.max(0, Math.min(bus.capacidad, base + delta));
+      store.reportes.push({
+        id: store.next_reporte_id++,
+        bus_id: bus.id,
         latitud: lat,
         longitud: lng,
-        cantidadPasajeros: pasajeros,
+        cantidad_pasajeros: pas,
         timestamp: new Date().toISOString(),
-        estacionId: target.id,
-        ocupacionPct: Math.round((pasajeros / bus.capacidad) * 100),
-        velocidadKmh: 18 + Math.round(Math.random() * 28),
-      };
-      store.reportes.push(reporte);
+        estacion_id: target.id,
+        ocupacion_pct: Math.round((pas / bus.capacidad) * 100),
+        velocidad_kmh: 18 + Math.round(Math.random() * 28),
+      });
     });
-    // recortar histórico para no crecer infinito (~últimos 1500)
-    if (store.reportes.length > 1500) {
-      store.reportes = store.reportes.slice(-1500);
-    }
+    if (store.reportes.length > 1500) store.reportes = store.reportes.slice(-1500);
     saveStore(store);
     notify();
   };
@@ -404,66 +570,60 @@ export function startSimulation(intervalMs = 3000) {
 }
 
 export function stopSimulation() {
-  if (simInterval) {
-    clearInterval(simInterval);
-    simInterval = null;
-    notify();
-  }
+  if (simInterval) { clearInterval(simInterval); simInterval = null; notify(); }
 }
 
 // ============================================================
-// Live updates para vista pública (legado)
+// Live updates para vista pública
 // ============================================================
 export function subscribeLiveBuses(
-  onUpdate: (update: LiveUpdate) => void,
-  routeId?: string,
+  onUpdate: (u: LiveUpdate) => void,
+  rutaId?: number,
 ): () => void {
   const build = (): LiveUpdate => {
     const buses: BusLiveView[] = store.buses
-      .filter((b) => !routeId || b.routeId === routeId)
+      .filter((b) => !rutaId || b.ruta_id === rutaId)
       .map((bus) => {
         const last = store.reportes
-          .filter((r) => r.busId === bus.id)
+          .filter((r) => r.bus_id === bus.id)
           .sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp))[0];
-        const route = ROUTES.find((r) => r.id === bus.routeId);
-        const stationIds = route?.stationIds ?? [];
-        const curId = last?.estacionId ?? stationIds[0] ?? "";
-        const idx = stationIds.indexOf(curId);
-        const nextId = idx >= 0 ? stationIds[idx + 1] ?? null : null;
-        const station = STATIONS.find((s) => s.id === curId);
+        const ruta = store.rutas.find((r) => r.id === bus.ruta_id);
+        const ids = ruta?.estacion_ids ?? [];
+        const curId = last?.estacion_id ?? ids[0] ?? null;
+        const idx = curId != null ? ids.indexOf(curId) : -1;
+        const nextId = idx >= 0 ? ids[idx + 1] ?? null : null;
+        const station = curId != null ? store.estaciones.find((s) => s.id === curId) : null;
         return {
           id: bus.id,
-          plate: bus.plate,
-          routeId: bus.routeId,
-          capacity: bus.capacidad,
-          currentOccupancy: last?.cantidadPasajeros ?? 0,
-          status: bus.status,
-          currentStationId: curId,
-          nextStationId: nextId,
-          progress: Math.random() * 0.9,
-          speed: last?.velocidadKmh ?? 0,
-          etaMinutes: 1 + Math.floor(Math.random() * 6),
-          lastUpdate: last?.timestamp ?? bus.createdAt,
-          lat: last?.latitud ?? station?.lat ?? -12.05,
-          lng: last?.longitud ?? station?.lng ?? -77.04,
-          direction: Math.random() > 0.5 ? "sur" : "norte",
+          codigo: bus.codigo,
+          placa: bus.placa,
+          ruta_id: bus.ruta_id,
+          capacidad: bus.capacidad,
+          ocupacion_actual: last?.cantidad_pasajeros ?? 0,
+          estado: bus.estado,
+          estacion_actual_id: curId,
+          estacion_siguiente_id: nextId,
+          progreso: Math.random() * 0.9,
+          velocidad_kmh: last?.velocidad_kmh ?? 0,
+          eta_minutos: 1 + Math.floor(Math.random() * 6),
+          ultima_actualizacion: last?.timestamp ?? bus.created_at,
+          latitud: last?.latitud ?? station?.latitud ?? -12.05,
+          longitud: last?.longitud ?? station?.longitud ?? -77.04,
+          direccion: Math.random() > 0.5 ? "sur" : "norte",
         };
       });
     return { buses, timestamp: new Date().toISOString() };
   };
 
   if (WS_URL) {
-    const ws = new WebSocket(`${WS_URL}/buses${routeId ? `?routeId=${routeId}` : ""}`);
-    ws.onmessage = (e) => {
-      try { onUpdate(JSON.parse(e.data)); } catch { /* noop */ }
-    };
+    const ws = new WebSocket(`${WS_URL}/live/buses${rutaId ? `?ruta_id=${rutaId}` : ""}`);
+    ws.onmessage = (e) => { try { onUpdate(JSON.parse(e.data)); } catch { /* */ } };
     return () => ws.close();
   }
 
-  // mock: emitir cuando cambie el store y cada 3s como fallback
   const emit = () => onUpdate(build());
   emit();
   const off = onStoreChange(emit);
-  const interval = setInterval(emit, 3000);
-  return () => { off(); clearInterval(interval); };
+  const fallback = setInterval(emit, 3000);
+  return () => { off(); clearInterval(fallback); };
 }
