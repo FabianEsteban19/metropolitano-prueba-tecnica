@@ -7,7 +7,7 @@ import { LiveTracking } from "@/components/metropolitano/LiveTracking";
 import { Footer } from "@/components/metropolitano/Footer";
 
 const Index = () => {
-  const [selectedRouteId, setSelectedRouteId] = useState<string | null>("rt-regular");
+  const [selectedRouteId, setSelectedRouteId] = useState<number | null>(1);
 
   return (
     <div className="min-h-screen bg-background">
