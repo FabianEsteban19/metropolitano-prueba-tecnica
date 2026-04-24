@@ -17,6 +17,8 @@ Este MVP fue **maquetado y desarrollado con Lovable**, un agente de IA que const
 - Sistema de autenticación, rutas protegidas y CRUDs maquetados
 - Diseño responsive con design system basado en tokens HSL semánticos
 
+Adicionalmente, **Lovable actuó como agente de apoyo en el análisis y construcción de la lógica** del proyecto: definición del modelo de datos PostgreSQL (ENUMs, triggers de validación de capacidad, vista `v_ultimo_estado_bus`), diseño de los contratos REST espejo del backend NestJS, y planteamiento de la arquitectura modular por features.
+
 > El **backend real** está desarrollado de forma independiente en **NestJS + PostgreSQL** y se conecta vía la variable `VITE_METROPOLITANO_API_URL`.
 
 ---
