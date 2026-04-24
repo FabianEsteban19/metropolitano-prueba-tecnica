@@ -112,21 +112,50 @@ src/
 
 ## 🚀 Cómo correr el proyecto
 
+### Requisitos previos
+
+- **Node.js** ≥ 18 (recomendado 20 LTS) — incluye `npm`
+- **npm** ≥ 9 (viene con Node.js) — gestor de paquetes oficial usado por este proyecto
+
+Verifica tu instalación:
+
 ```bash
-# Instalar dependencias
-bun install
-
-# Modo desarrollo (mock activo por defecto)
-bun run dev
-
-# Build de producción
-bun run build
-
-# Tests
-bun run test
+node -v
+npm -v
 ```
 
+Si no tienes Node.js instalado, descárgalo desde [nodejs.org](https://nodejs.org/) o usa [nvm](https://github.com/nvm-sh/nvm):
+
+```bash
+nvm install 20
+nvm use 20
+```
+
+### Instalación y ejecución
+
+```bash
+# 1. Clonar el repositorio
+git clone <url-del-repo>
+cd <nombre-del-repo>
+
+# 2. Instalar dependencias con npm
+npm install
+
+# 3. Modo desarrollo (mock activo por defecto)
+npm run dev
+
+# 4. Build de producción
+npm run build
+
+# 5. Tests
+npm run test
+```
+
+La app estará disponible por defecto en `http://localhost:8080`.
+
 ### Variables de entorno
+
+Crea un archivo `.env` en la raíz del proyecto:
 
 ```env
 # URL del backend NestJS (si está vacío, usa el mock interno)
