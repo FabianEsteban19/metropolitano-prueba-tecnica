@@ -15,14 +15,14 @@ const HistorialPage = () => {
   const [buses, setBuses] = useState<Bus[]>([]);
   const [rutas, setRutas] = useState<Ruta[]>([]);
   const [estaciones, setEstaciones] = useState<Estacion[]>([]);
-  const [busId, setBusId] = useState<number | null>(null);
+  const [busId, setBusId] = useState<string>("");
   const [historial, setHistorial] = useState<Reporte[]>([]);
 
   useEffect(() => {
     listarBuses({ page: 1, page_size: 1000 }).then((r) => {
       if (r.ok && r.data) {
         setBuses(r.data.items);
-        if (busId == null && r.data.items.length) setBusId(r.data.items[0].id);
+        if (!busId && r.data.items.length) setBusId(String(r.data.items[0].id));
       }
     });
     listarRutas().then(setRutas);
@@ -31,12 +31,12 @@ const HistorialPage = () => {
   }, [v]);
 
   useEffect(() => {
-    if (busId == null) return;
-    obtenerHistorial(busId, { limit: 100 }).then((r) => r.ok && r.data && setHistorial(r.data));
+    if (!busId) return;
+    obtenerHistorial(busId as unknown as number, { limit: 100 }).then((r) => r.ok && r.data && setHistorial(r.data));
   }, [busId, v]);
 
-  const bus = buses.find((b) => b.id === busId);
-  const ruta = rutas.find((r) => r.id === bus?.ruta_id);
+  const bus = buses.find((b) => String(b.id) === String(busId));
+  const ruta = rutas.find((r) => String(r.id) === String(bus?.ruta_id));
 
   const chartData = useMemo(() => {
     return [...historial].reverse().map((r) => ({
@@ -67,10 +67,10 @@ const HistorialPage = () => {
         <div>
           <h1 className="font-display font-bold text-3xl tracking-tight">Historial por bus</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Endpoint: <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">GET /buses/:id/historial</code>
+            Fuente: <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">GET /reportes</code>
           </p>
         </div>
-        <Select value={busId != null ? String(busId) : ""} onValueChange={(v) => setBusId(Number(v))}>
+        <Select value={busId} onValueChange={setBusId}>
           <SelectTrigger className="w-[280px]">
             <SelectValue placeholder="Selecciona un bus" />
           </SelectTrigger>

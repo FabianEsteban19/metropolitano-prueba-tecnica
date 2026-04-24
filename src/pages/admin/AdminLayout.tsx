@@ -12,6 +12,7 @@ const NAV = [
   { to: "/admin/buses",     label: "Buses",      icon: BusIcon },
   { to: "/admin/reportes",  label: "Reportes",   icon: FileBarChart2 },
   { to: "/admin/historial", label: "Historial",  icon: History },
+  { to: "/admin/monitoreo", label: "Monitoreo",  icon: Activity },
   { to: "/admin/rutas",     label: "Rutas",      icon: RouteIcon },
   { to: "/admin/estaciones",label: "Estaciones", icon: MapPin },
 ];
@@ -87,11 +88,11 @@ const AdminLayout = () => {
           </Link>
 
           <div className="px-3 py-2 rounded-lg bg-background/5 text-xs">
-            <div className="font-semibold truncate">{user?.name}</div>
+            <div className="font-semibold truncate">{user?.nombre}</div>
             <div className="opacity-60 truncate">{user?.email}</div>
-            {user?.role && (
+            {user?.rol && (
               <div className="mt-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary uppercase tracking-wider font-bold">
-                {user.role}
+                {user.rol}
               </div>
             )}
           </div>

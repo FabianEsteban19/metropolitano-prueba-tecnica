@@ -48,6 +48,36 @@ const ESTADO_VARIANT: Record<BusEstado, "default" | "secondary" | "destructive" 
   retraso: "destructive",
 };
 
+const BUS_CODE_PREFIX = "METRO-";
+
+function parseBusCode(codigo: string): { correlativo: number; width: number } | null {
+  const match = codigo.trim().toUpperCase().match(/^METRO-(\d+)$/);
+  if (!match) return null;
+
+  const correlativo = Number(match[1]);
+  if (!Number.isFinite(correlativo)) return null;
+
+  return {
+    correlativo,
+    width: Math.max(3, match[1].length),
+  };
+}
+
+function getNextBusCode(items: Array<Pick<Bus, "codigo">>): string {
+  let maxCorrelativo = 0;
+  let width = 3;
+
+  items.forEach((item) => {
+    const parsed = parseBusCode(item.codigo);
+    if (!parsed) return;
+
+    maxCorrelativo = Math.max(maxCorrelativo, parsed.correlativo);
+    width = Math.max(width, parsed.width);
+  });
+
+  return `${BUS_CODE_PREFIX}${String(maxCorrelativo + 1).padStart(width, "0")}`;
+}
+
 const BusesPage = () => {
   const v = useStoreVersion();
   const { toast } = useToast();
@@ -55,6 +85,7 @@ const BusesPage = () => {
   const [buses, setBuses] = useState<Bus[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [rutas, setRutas] = useState<Ruta[]>([]);
   const [estaciones, setEstaciones] = useState<Estacion[]>([]);
@@ -79,7 +110,7 @@ const BusesPage = () => {
       page,
       page_size: PAGE_SIZE,
       search: search || undefined,
-      ruta_id: rutaFilter !== "todos" ? Number(rutaFilter) : null,
+      ruta_id: rutaFilter !== "todos" ? (rutaFilter as unknown as number) : null,
       estado: estadoFilter !== "todos" ? estadoFilter : null,
       filtro,
     };
@@ -89,7 +120,11 @@ const BusesPage = () => {
         setTotal(r.data.total);
       }
     });
-  }, [v, page, search, rutaFilter, estadoFilter, filtro]);
+  }, [v, refreshKey, page, search, rutaFilter, estadoFilter, filtro]);
+
+  const refreshList = () => {
+    setRefreshKey((current) => current + 1);
+  };
 
   // reset page on filter change
   useEffect(() => { setPage(1); }, [search, rutaFilter, estadoFilter, filtro]);
@@ -100,17 +135,23 @@ const BusesPage = () => {
     if (!deleting) return;
     const r = await eliminarBus(deleting.id);
     setDeleting(null);
-    if (r.ok) toast({ title: "Bus eliminado", description: `${deleting.codigo} fue eliminado correctamente.` });
+    if (r.ok) {
+      refreshList();
+      toast({ title: "Bus eliminado", description: `${deleting.codigo} fue eliminado correctamente.` });
+    }
     else toast({ title: "Error", description: r.error?.message, variant: "destructive" });
   };
 
   const toggleEstado = async (bus: Bus) => {
     const nuevo: BusEstado = bus.estado === "fuera_servicio" ? "en_ruta" : "fuera_servicio";
     const r = await cambiarEstadoBus(bus.id, nuevo);
-    if (r.ok) toast({
+    if (r.ok) {
+      refreshList();
+      toast({
       title: nuevo === "fuera_servicio" ? "Bus deshabilitado" : "Bus habilitado",
       description: `${bus.codigo} ahora está en estado «${ESTADO_LABEL[nuevo]}».`,
-    });
+      });
+    }
     else toast({ title: "Error", description: r.error?.message, variant: "destructive" });
   };
 
@@ -295,7 +336,11 @@ const BusesPage = () => {
         bus={editing}
         rutas={rutas}
         onOpenChange={(o) => { if (!o) { setCreating(false); setEditing(null); } }}
-        onSuccess={(msg) => toast({ title: "Listo", description: msg })}
+        onSuccess={(msg) => {
+          setPage(1);
+          refreshList();
+          toast({ title: "Listo", description: msg });
+        }}
         onError={(msg) => toast({ title: "Error", description: msg, variant: "destructive" })}
       />
 
@@ -303,7 +348,10 @@ const BusesPage = () => {
         bus={reporting}
         estaciones={estaciones}
         onOpenChange={(o) => { if (!o) setReporting(null); }}
-        onSuccess={(msg) => toast({ title: "Reporte registrado", description: msg })}
+        onSuccess={(msg) => {
+          refreshList();
+          toast({ title: "Reporte registrado", description: msg });
+        }}
         onError={(msg) => toast({ title: "Error", description: msg, variant: "destructive" })}
       />
 
@@ -348,14 +396,37 @@ const BusFormDialog = ({
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setCodigo(bus?.codigo ?? "");
+    let active = true;
+
+    const hydrateForm = async () => {
+      if (!open) return;
+
       setPlaca(bus?.placa ?? "");
       setCapacidad(bus?.capacidad ?? 160);
       setRutaId(bus?.ruta_id ? String(bus.ruta_id) : (rutas[0] ? String(rutas[0].id) : ""));
       setEstado(bus?.estado ?? "fuera_servicio");
       setErr(null);
-    }
+
+      if (bus) {
+        setCodigo(bus.codigo);
+        return;
+      }
+
+      setCodigo(getNextBusCode([]));
+
+      const response = await listarBuses({ page: 1, page_size: 1000 });
+      if (!active) return;
+
+      if (response.ok && response.data) {
+        setCodigo(getNextBusCode(response.data.items));
+      }
+    };
+
+    void hydrateForm();
+
+    return () => {
+      active = false;
+    };
   }, [open, bus, rutas]);
 
   const submit = async (e: React.FormEvent) => {
@@ -364,7 +435,7 @@ const BusFormDialog = ({
     const dto = {
       codigo, capacidad,
       placa: placa.trim() || null,
-      ruta_id: rutaId ? Number(rutaId) : null,
+      ruta_id: rutaId ? (rutaId as unknown as number) : null,
       estado,
     };
     const r = bus
@@ -389,8 +460,15 @@ const BusFormDialog = ({
         <form onSubmit={submit} className="space-y-4">
           <div>
             <Label htmlFor="codigo">Código *</Label>
-            <Input id="codigo" value={codigo} onChange={(e) => setCodigo(e.target.value)} required maxLength={20}
-              placeholder="METRO-001" />
+            <Input
+              id="codigo"
+              value={codigo}
+              readOnly
+              disabled
+              maxLength={20}
+              placeholder="METRO-001"
+              className="bg-muted text-muted-foreground cursor-not-allowed"
+            />
             <p className="text-xs text-muted-foreground mt-1">Único, ej. METRO-001</p>
           </div>
           <div>
@@ -475,7 +553,7 @@ const ReporteDialog = ({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null); setBusy(true);
-    const est = estaciones.find((s) => s.id === Number(estacionId));
+    const est = estaciones.find((s) => String(s.id) === String(estacionId));
     if (!est) { setErr("Estación inválida"); setBusy(false); return; }
     const r = await registrarReporte({
       bus_id: bus.id,
@@ -497,7 +575,7 @@ const ReporteDialog = ({
         <DialogHeader>
           <DialogTitle>Registrar reporte · {bus.codigo}</DialogTitle>
           <DialogDescription>
-            Endpoint: <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">POST /buses/{bus.id}/reportes</code>
+            Endpoint: <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">POST /reportes</code>
           </DialogDescription>
         </DialogHeader>
 

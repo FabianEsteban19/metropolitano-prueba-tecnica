@@ -2,41 +2,46 @@ import { Bus } from "lucide-react";
 
 export const Footer = () => {
   return (
-    <footer className="bg-secondary text-secondary-foreground py-12 mt-10">
-      <div className="container grid md:grid-cols-3 gap-8">
+    <footer className="mt-10 bg-secondary py-12 text-secondary-foreground">
+      <div className="container grid gap-8 md:grid-cols-3">
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
-              <Bus className="w-4 h-4 text-primary-foreground" />
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
+              <Bus className="h-4 w-4 text-primary-foreground" />
             </div>
             <span className="font-display font-bold tracking-tight">METROPOLITANO</span>
           </div>
-          <p className="text-sm opacity-70 max-w-sm">
-            Portal demostrativo del sistema BRT de Lima, Perú. Listo para integrarse con
-            endpoints reales del operador.
+          <p className="max-w-sm text-sm opacity-70">
+            Portal publico del corredor metropolitano de Lima para consultar rutas, recorrido de estaciones
+            y estado operativo de la flota.
           </p>
         </div>
+
         <div>
-          <h4 className="text-xs uppercase tracking-[0.2em] mb-3 opacity-60">Endpoints listos</h4>
-          <ul className="space-y-1.5 text-sm font-mono opacity-80">
-            <li>GET /routes</li>
-            <li>GET /stations</li>
-            <li>GET /buses</li>
-            <li>GET /schedules/:route/:station</li>
-            <li>WS  /buses (live)</li>
+          <h4 className="mb-3 text-xs uppercase tracking-[0.2em] opacity-60">Explora</h4>
+          <ul className="space-y-2 text-sm opacity-80">
+            <li><a href="#rutas" className="transition-smooth hover:opacity-100">Rutas del corredor</a></li>
+            <li><a href="#horarios" className="transition-smooth hover:opacity-100">Operacion y estaciones</a></li>
+            <li><a href="#en-vivo" className="transition-smooth hover:opacity-100">Buses en vivo</a></li>
           </ul>
         </div>
+
         <div>
-          <h4 className="text-xs uppercase tracking-[0.2em] mb-3 opacity-60">Configuración</h4>
-          <p className="text-sm opacity-70 mb-2">Define en tu entorno:</p>
-          <code className="block text-xs bg-background/10 rounded-lg p-3 font-mono">
-            VITE_METROPOLITANO_API_URL<br />
-            VITE_METROPOLITANO_WS_URL
-          </code>
+          <h4 className="mb-3 text-xs uppercase tracking-[0.2em] opacity-60">Acceso</h4>
+          <div className="space-y-3 text-sm opacity-80">
+            <p>Seguimiento operativo y herramientas internas disponibles desde el panel administrativo.</p>
+            <a
+              href="/admin/login"
+              className="inline-flex items-center rounded-lg border border-background/20 bg-background/10 px-4 py-2 font-medium transition-smooth hover:bg-background/15"
+            >
+              Ir al portal admin
+            </a>
+          </div>
         </div>
       </div>
-      <div className="container mt-10 pt-6 border-t border-background/10 text-xs opacity-60 text-center">
-        © {new Date().getFullYear()} Metropolitano Portal · Diseñado para Lima.
+
+      <div className="container mt-10 border-t border-background/10 pt-6 text-center text-xs opacity-60">
+        © {new Date().getFullYear()} Metropolitano Portal · Disenado para Lima.
       </div>
     </footer>
   );

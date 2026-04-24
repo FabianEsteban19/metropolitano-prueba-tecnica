@@ -1,20 +1,15 @@
-import { useEffect, useState } from "react";
 import { Clock, MapPin } from "lucide-react";
-import { listarRutas } from "@/lib/api/metropolitanoApi";
-import type { Ruta } from "@/lib/api/types";
+
+import type { PublicRuta } from "@/features/public-transit/types";
 
 interface Props {
-  selectedRouteId: number | null;
-  onSelect: (id: number) => void;
+  rutas: PublicRuta[];
+  selectedRouteId: string | null;
+  stationCountByRouteId: Record<string, number>;
+  onSelect: (id: string) => void;
 }
 
-export const RoutesSection = ({ selectedRouteId, onSelect }: Props) => {
-  const [rutas, setRutas] = useState<Ruta[]>([]);
-
-  useEffect(() => {
-    listarRutas().then(setRutas);
-  }, []);
-
+export const RoutesSection = ({ rutas, selectedRouteId, stationCountByRouteId, onSelect }: Props) => {
   return (
     <section id="rutas" className="container py-20">
       <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
@@ -25,7 +20,7 @@ export const RoutesSection = ({ selectedRouteId, onSelect }: Props) => {
           </h2>
         </div>
         <p className="text-muted-foreground max-w-md">
-          Selecciona una ruta para ver sus estaciones, horarios y los buses operando en este momento.
+          Selecciona una ruta para ver sus estaciones, frecuencia operativa y los buses disponibles en este momento.
         </p>
       </div>
 
@@ -55,16 +50,18 @@ export const RoutesSection = ({ selectedRouteId, onSelect }: Props) => {
               </div>
 
               <h3 className="font-display font-bold text-xl mb-2">{ruta.nombre}</h3>
-              <p className="text-sm text-muted-foreground mb-5 line-clamp-2">{ruta.descripcion ?? ""}</p>
+              <p className="text-sm text-muted-foreground mb-5 line-clamp-2">
+                {ruta.descripcion ?? "Servicio público del corredor metropolitano."}
+              </p>
 
               <div className="flex items-center gap-4 text-xs text-muted-foreground border-t border-border pt-4">
                 <span className="flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5" />
-                  {ruta.estacion_ids?.length ?? 0} estaciones
+                  {stationCountByRouteId[ruta.id] ?? 0} estaciones
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5" />
-                  cada {ruta.frecuencia_min} min
+                  cada {ruta.frecuenciaMin} min
                 </span>
               </div>
             </button>

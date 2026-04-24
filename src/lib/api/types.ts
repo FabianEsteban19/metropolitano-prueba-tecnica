@@ -76,7 +76,7 @@ export interface Ruta {
   descripcion?: string;
   horarios?: {
     lun_vie: { start: string; end: string };
-    sabado:  { start: string; end: string };
+    sabado: { start: string; end: string };
     domingo: { start: string; end: string };
   };
 }
@@ -162,7 +162,8 @@ export interface CreateRutaDto {
   nombre: string;
   servicio: ServicioTipo;
   color: string;
-  frecuencia_min: number;
+  frecuencia_min?: number;
+  frecuenciaMin?: number;
 }
 export type UpdateRutaDto = Partial<CreateRutaDto>;
 

@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/lib/auth/ProtectedRoute";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import AdminLogin from "./pages/admin/AdminLogin.tsx";
+import AdminRegister from "./pages/admin/AdminRegister.tsx";
 import AdminLayout from "./pages/admin/AdminLayout.tsx";
 import Dashboard from "./pages/admin/Dashboard.tsx";
 import BusesPage from "./pages/admin/BusesPage.tsx";
@@ -15,6 +16,7 @@ import ReportesPage from "./pages/admin/ReportesPage.tsx";
 import HistorialPage from "./pages/admin/HistorialPage.tsx";
 import RutasPage from "./pages/admin/RutasPage.tsx";
 import EstacionesPage from "./pages/admin/EstacionesPage.tsx";
+import MonitoreoPage from "./pages/admin/MonitoreoPage.tsx";
 
 const queryClient = new QueryClient();
 
@@ -23,11 +25,12 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin/register" element={<AdminRegister />} />
             <Route
               path="/admin"
               element={
@@ -42,6 +45,7 @@ const App = () => (
               <Route path="historial" element={<HistorialPage />} />
               <Route path="rutas" element={<RutasPage />} />
               <Route path="estaciones" element={<EstacionesPage />} />
+              <Route path="monitoreo" element={<MonitoreoPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

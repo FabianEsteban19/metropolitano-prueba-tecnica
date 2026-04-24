@@ -1,6 +1,18 @@
 import { ArrowRight, Bus, MapPin, Activity } from "lucide-react";
 
-export const Hero = () => {
+interface Props {
+  serviciosCount: number;
+  estacionesCount: number;
+  busesActivosCount: number;
+  frecuenciaMinima: number | null;
+}
+
+export const Hero = ({
+  serviciosCount,
+  estacionesCount,
+  busesActivosCount,
+  frecuenciaMinima,
+}: Props) => {
   return (
     <section id="top" className="relative overflow-hidden gradient-hero text-primary-foreground">
       <div className="absolute inset-0 opacity-20" aria-hidden>
@@ -12,7 +24,7 @@ export const Hero = () => {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary-foreground/30 bg-primary-foreground/10 text-xs font-medium backdrop-blur-sm mb-6 fade-in-up">
             <span className="w-2 h-2 rounded-full bg-success pulse-live" />
-            Sistema operativo · 36 estaciones · 6 servicios
+            Sistema operativo · {estacionesCount} estaciones · {serviciosCount} servicios
           </div>
 
           <h1 className="font-display font-bold text-4xl md:text-6xl lg:text-7xl leading-[1.05] tracking-tight mb-6 fade-in-up">
@@ -22,8 +34,8 @@ export const Hero = () => {
           </h1>
 
           <p className="text-lg md:text-xl text-primary-foreground/85 max-w-2xl mb-10 fade-in-up" style={{ animationDelay: "0.1s" }}>
-            Consulta rutas, horarios, aforo de buses y rastrea cada unidad del Metropolitano
-            mientras avanza por el corredor Naranjal — Matellini.
+            Consulta rutas, estaciones, estado operativo de buses y rastrea cada unidad del Metropolitano
+            mientras avanza por el corredor principal.
           </p>
 
           <div className="flex flex-wrap gap-3 fade-in-up" style={{ animationDelay: "0.2s" }}>
@@ -43,9 +55,9 @@ export const Hero = () => {
 
           <div className="grid grid-cols-3 gap-6 mt-16 max-w-xl fade-in-up" style={{ animationDelay: "0.3s" }}>
             {[
-              { icon: Bus, label: "Buses activos", value: "+40" },
-              { icon: MapPin, label: "Estaciones", value: "36" },
-              { icon: Activity, label: "Frecuencia min.", value: "4 min" },
+              { icon: Bus, label: "Buses activos", value: String(busesActivosCount) },
+              { icon: MapPin, label: "Estaciones", value: String(estacionesCount) },
+              { icon: Activity, label: "Frecuencia min.", value: frecuenciaMinima != null ? `${frecuenciaMinima} min` : "-" },
             ].map((s) => (
               <div key={s.label} className="border-l-2 border-primary-foreground/30 pl-4">
                 <s.icon className="w-5 h-5 mb-2 text-accent" />
